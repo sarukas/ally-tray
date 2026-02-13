@@ -58,7 +58,8 @@ get_python_version() {
 
 # Find suitable Python
 find_python() {
-    for cmd in python3 python; do
+    # Check common names, including versioned binaries (Homebrew keg-only)
+    for cmd in python3 python python3.13 python3.12 python3.11; do
         if command_exists "$cmd"; then
             version=$(get_python_version "$cmd")
             if version_gte "$version" "$MIN_PYTHON_VERSION"; then
@@ -67,6 +68,23 @@ find_python() {
             fi
         fi
     done
+
+    # On macOS, check Homebrew keg-only paths directly
+    if [ "$(detect_platform)" = "macos" ]; then
+        local brew_prefix
+        brew_prefix="$(brew --prefix 2>/dev/null || echo /opt/homebrew)"
+        for pyver in 3.13 3.12 3.11; do
+            local brew_python="$brew_prefix/opt/python@$pyver/bin/python$pyver"
+            if [ -x "$brew_python" ]; then
+                version=$(get_python_version "$brew_python")
+                if version_gte "$version" "$MIN_PYTHON_VERSION"; then
+                    echo "$brew_python"
+                    return 0
+                fi
+            fi
+        done
+    fi
+
     return 1
 }
 
@@ -259,6 +277,11 @@ main() {
         success "Python found: $python_cmd ($(get_python_version "$python_cmd"))"
     else
         install_python || exit 1
+        # Refresh PATH so newly installed Python is discoverable
+        hash -r 2>/dev/null
+        if [ "$(detect_platform)" = "macos" ] && command_exists brew; then
+            export PATH="$(brew --prefix)/opt/python@3.11/bin:$PATH"
+        fi
         # Retry finding Python after install
         if python_cmd=$(find_python); then
             success "Python installed: $python_cmd ($(get_python_version "$python_cmd"))"

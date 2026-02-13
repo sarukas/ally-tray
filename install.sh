@@ -206,6 +206,13 @@ clone_repo() {
     warn "The repository is private. A GitHub Personal Access Token (PAT) is required."
     info "Create one at: https://github.com/settings/tokens (needs 'repo' scope)"
     echo ""
+    # When piped (curl | bash), stdin is not a terminal — cannot prompt for PAT
+    if [ ! -t 0 ]; then
+        error "Cannot prompt for credentials when piped. Run the script directly instead:"
+        info "  curl -fsSL https://get.myally.ai/install.sh -o install.sh && bash install.sh"
+        return 1
+    fi
+
     read -rp "GitHub PAT: " github_token
     if [ -z "$github_token" ]; then
         error "No token provided. Cannot clone private repository."
@@ -329,7 +336,8 @@ main() {
     fi
 
     # Confirm for fresh installs only (updates are confirmed by ally-updater CLI)
-    if [ "$auto_yes" != true ] && [ "$is_update" != true ]; then
+    # When piped (curl | bash), stdin is not a terminal — skip prompt and assume yes
+    if [ "$auto_yes" != true ] && [ "$is_update" != true ] && [ -t 0 ]; then
         read -p "Continue with installation? [Y/n] " response
         case "$response" in
             [nN][oO]|[nN])

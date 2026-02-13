@@ -14,7 +14,7 @@ This repository hosts binary releases of the MyAlly system tray application. The
 
 ## Installation
 
-These scripts install the full **MyAlly** platform (backend, frontend, and dependencies) from the private [sarukas/ally](https://github.com/sarunas/ally) repository.
+These scripts install the full **MyAlly** platform (backend, frontend, and dependencies) from the private [sarukas/ally](https://github.com/sarukas/ally) repository.
 
 ### Prerequisites
 
@@ -30,13 +30,13 @@ These scripts install the full **MyAlly** platform (backend, frontend, and depen
 Download https://raw.githubusercontent.com/sarukas/ally-tray/refs/heads/main/install.bat and double-click it or from a terminal:
 
 ```powershell
-irm https://raw.githubusercontent.com/sarunas/ally-tray/refs/heads/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/sarukas/ally-tray/refs/heads/main/install.ps1 | iex
 ```
 
 ### macOS / Linux
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/sarunas/ally-tray/refs/heads/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/sarukas/ally-tray/refs/heads/main/install.sh | bash
 ```
 
 See the [main repository](https://github.com/sarukas/ally) for full documentation.

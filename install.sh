@@ -397,14 +397,14 @@ main() {
         info "Starting installation..."
     fi
 
-    # Run updater using the venv Python
-    install_args="--install-dir $install_dir"
+    # Run updater using the venv Python (use array to preserve paths with spaces)
+    install_args=("--install-dir" "$install_dir")
     if [ "$auto_yes" = true ]; then
-        install_args="$install_args --yes"
+        install_args+=("--yes")
     fi
 
     # Run updater and capture exit code (don't use exec - let trap cleanup run)
-    "$venv_python" -m ally_updater $install_args
+    "$venv_python" -m ally_updater "${install_args[@]}"
     updater_exit_code=$?
 
     # Cleanup happens via trap on EXIT

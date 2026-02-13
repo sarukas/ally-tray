@@ -168,8 +168,8 @@ check_uv() {
     info "Installing uv..."
     curl -LsSf https://astral.sh/uv/install.sh | sh
 
-    # Source the environment
-    export PATH="$HOME/.cargo/bin:$PATH"
+    # Source the environment (uv installs to ~/.local/bin or ~/.cargo/bin)
+    export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
 
     if command_exists uv; then
         success "uv installed: $(uv --version)"

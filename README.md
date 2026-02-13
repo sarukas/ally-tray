@@ -12,9 +12,40 @@ This repository hosts binary releases of the MyAlly system tray application. The
 - 🔔 Update notifications with tray icon badge
 - ⬆️ Update application via menu
 
+## Installation
+
+These scripts install the full **MyAlly** platform (backend, frontend, and dependencies) from the private [sarukas/ally](https://github.com/sarunas/ally) repository.
+
+### Prerequisites
+
+- **Git** - [git-scm.com](https://git-scm.com) or `winget install Git.Git`
+- **Python 3.11+** - [python.org](https://python.org) or `winget install Python.Python.3.11`
+- **Private repo access** — one of:
+  - [GitHub CLI](https://cli.github.com/) (`gh`) authenticated with `gh auth login`
+  - SSH key configured for GitHub
+  - A GitHub [Personal Access Token](https://github.com/settings/tokens) with `repo` scope (you'll be prompted)
+
+### Windows
+
+Download and double-click [`install.bat`](install.bat), or from a terminal:
+
+```powershell
+irm https://raw.githubusercontent.com/sarunas/ally-tray/main/install.ps1 | iex
+```
+
+### macOS / Linux
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/sarunas/ally-tray/main/install.sh | bash
+```
+
+See the [main repository](https://github.com/sarukas/ally) for full documentation.
+
+---
+
 ## Downloads
 
-Download the latest release from the [Releases](https://github.com/sarukas/ally-tray/releases) page.
+Download the latest tray app release from the [Releases](https://github.com/sarukas/ally-tray/releases) page.
 
 | Platform | File |
 |----------|------|

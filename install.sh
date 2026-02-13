@@ -399,7 +399,9 @@ main() {
 
     # Run updater using the venv Python (use array to preserve paths with spaces)
     install_args=("--install-dir" "$install_dir")
-    if [ "$auto_yes" = true ]; then
+    if [ "$auto_yes" = true ] || [ ! -t 0 ]; then
+        # Pass --yes when explicitly requested OR when stdin is piped (curl | bash)
+        # since updater's input() calls will get EOFError on piped stdin
         install_args+=("--yes")
     fi
 

@@ -6,7 +6,7 @@
 # Usage:
 #   irm https://get.myally.ai/install.ps1 | iex
 #   OR
-#   .\install.ps1 [-InstallDir <path>] [-Yes]
+#   .\install.ps1 [-InstallDir <path>] [-Yes] [-Force] [-Component <main-app|tray|all>]
 
 [CmdletBinding()]
 param(
@@ -15,6 +15,13 @@ param(
 
     [Parameter(Mandatory=$false)]
     [switch]$Yes,
+
+    [Parameter(Mandatory=$false)]
+    [switch]$Force,
+
+    [Parameter(Mandatory=$false)]
+    [ValidateSet("main-app", "tray", "all")]
+    [string]$Component,
 
     [Parameter(Mandatory=$false)]
     [switch]$Help
@@ -455,6 +462,12 @@ function Main {
         $installArgs = @("--install-dir", $InstallDir)
         if ($Yes) {
             $installArgs += "--yes"
+        }
+        if ($Force) {
+            $installArgs += "--force"
+        }
+        if ($Component) {
+            $installArgs += @("--component", $Component)
         }
 
         & $venvPython -m ally_updater @installArgs

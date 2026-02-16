@@ -25,11 +25,31 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Logging functions
-info() { echo -e "${BLUE}[INFO]${NC} $1"; }
-success() { echo -e "${GREEN}[OK]${NC} $1"; }
+# Verbosity flag (set by --verbose)
+VERBOSE=false
+
+# Output buffer for error context
+OUTPUT_BUFFER=""
+
+buffer_add() { OUTPUT_BUFFER="${OUTPUT_BUFFER}${1}\n"; }
+dump_buffer() { if [ -n "$OUTPUT_BUFFER" ]; then echo -e "\n--- Detailed output (for debugging) ---" >&2; echo -e "$OUTPUT_BUFFER" >&2; echo "--- End detailed output ---" >&2; OUTPUT_BUFFER=""; fi; }
+
+# Logging functions (info/success gated by verbose, warn/error always visible)
+info() { if [ "$VERBOSE" = true ]; then echo -e "${BLUE}[INFO]${NC} $1"; else buffer_add "[INFO] $1"; fi; }
+success() { if [ "$VERBOSE" = true ]; then echo -e "${GREEN}[OK]${NC} $1"; else buffer_add "[OK] $1"; fi; }
 warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
-error() { echo -e "${RED}[ERROR]${NC} $1" >&2; }
+error() { dump_buffer; echo -e "${RED}[ERROR]${NC} $1" >&2; }
+milestone() {
+    local desc="$1"
+    local status="$2"
+    if [ -n "$status" ]; then
+        local pad=$((40 - ${#desc}))
+        [ "$pad" -lt 1 ] && pad=1
+        printf "  %s...%*s%s\n" "$desc" "$pad" "" "$status"
+    else
+        printf "  %s...\n" "$desc"
+    fi
+}
 
 # Detect platform
 detect_platform() {
@@ -343,12 +363,17 @@ main() {
                 auto_yes=true
                 shift
                 ;;
+            --verbose|-v)
+                VERBOSE=true
+                shift
+                ;;
             --help|-h)
                 echo "Usage: $0 [OPTIONS]"
                 echo ""
                 echo "Options:"
                 echo "  --install-dir <path>   Set installation directory"
                 echo "  --yes, -y              Skip confirmation prompts"
+                echo "  --verbose, -v          Show detailed output"
                 echo "  --help, -h             Show this help"
                 exit 0
                 ;;
@@ -369,7 +394,11 @@ main() {
     fi
 
     # Check prerequisites
-    info "Checking prerequisites..."
+    if [ "$VERBOSE" = true ]; then
+        info "Checking prerequisites..."
+    else
+        milestone "Checking prerequisites"
+    fi
     check_git
 
     # Find or install Python
@@ -404,6 +433,10 @@ main() {
         fi
     else
         warn "Node.js not found. The installer will attempt to install it."
+    fi
+
+    if [ "$VERBOSE" != true ]; then
+        milestone "Checking prerequisites" "done"
     fi
 
     # Set default install directory
@@ -444,6 +477,9 @@ main() {
     tmp_dir=$(mktemp -d)
     trap "rm -rf $tmp_dir" EXIT
 
+    if [ "$VERBOSE" != true ]; then
+        milestone "Downloading updater"
+    fi
     info "Downloading MyAlly Update Script..."
 
     # Clone repository (shallow, with auth fallback)
@@ -461,15 +497,21 @@ main() {
         exit 1
     fi
 
+    if [ "$VERBOSE" != true ]; then
+        milestone "Downloading updater" "done"
+        milestone "Setting up environment"
+    fi
     info "Setting up installation environment..."
 
     # Create a virtual environment for the updater
     venv_dir="$tmp_dir/venv"
-    uv venv "$venv_dir" --python 3.11
+    uv_output=$(uv venv "$venv_dir" --python 3.11 2>&1)
     if [ $? -ne 0 ]; then
+        [ "$VERBOSE" = true ] && echo "$uv_output"
         error "Failed to create virtual environment"
         exit 1
     fi
+    [ "$VERBOSE" = true ] && echo "$uv_output"
 
     # Get venv Python path
     venv_python="$venv_dir/bin/python"
@@ -478,10 +520,16 @@ main() {
 
     # Install updater in the venv using uv (uv doesn't need pip in venv)
     cd "$updater_dir"
-    uv pip install -e . --python "$venv_python"
+    uv_output=$(uv pip install -e . --python "$venv_python" 2>&1)
     if [ $? -ne 0 ]; then
+        [ "$VERBOSE" = true ] && echo "$uv_output"
         error "Failed to install ally-updater"
         exit 1
+    fi
+    [ "$VERBOSE" = true ] && echo "$uv_output"
+
+    if [ "$VERBOSE" != true ]; then
+        milestone "Setting up environment" "done"
     fi
 
     if [ "$is_update" = true ]; then
@@ -492,6 +540,9 @@ main() {
 
     # Run updater using the venv Python (use array to preserve paths with spaces)
     install_args=("--install-dir" "$install_dir")
+    if [ "$VERBOSE" = true ]; then
+        install_args+=("--verbose")
+    fi
     if [ "$auto_yes" = true ] || [ ! -t 0 ]; then
         # Pass --yes when explicitly requested OR when stdin is piped (curl | bash)
         # since updater's input() calls will get EOFError on piped stdin

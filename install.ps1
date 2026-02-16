@@ -24,6 +24,10 @@ param(
     [string]$Component,
 
     [Parameter(Mandatory=$false)]
+    [Alias("v")]
+    [switch]$VerboseOutput,
+
+    [Parameter(Mandatory=$false)]
     [switch]$Help
 )
 
@@ -42,10 +46,14 @@ $Script:Colors = @{
     Error   = "Red"
 }
 
-function Write-Info    { param($msg) Write-Host "[INFO]  " -ForegroundColor $Script:Colors.Info -NoNewline; Write-Host $msg }
-function Write-Success { param($msg) Write-Host "[OK]    " -ForegroundColor $Script:Colors.Success -NoNewline; Write-Host $msg }
+function Write-Info    { param($msg) if ($VerboseOutput) { Write-Host "[INFO]  " -ForegroundColor $Script:Colors.Info -NoNewline; Write-Host $msg } else { $Script:OutputBuffer += "[INFO]  $msg" } }
+function Write-Success { param($msg) if ($VerboseOutput) { Write-Host "[OK]    " -ForegroundColor $Script:Colors.Success -NoNewline; Write-Host $msg } else { $Script:OutputBuffer += "[OK]    $msg" } }
 function Write-Warn    { param($msg) Write-Host "[WARN]  " -ForegroundColor $Script:Colors.Warning -NoNewline; Write-Host $msg }
-function Write-Err     { param($msg) Write-Host "[ERROR] " -ForegroundColor $Script:Colors.Error -NoNewline; Write-Host $msg }
+function Write-Err     { param($msg) Dump-BufferedOutput; Write-Host "[ERROR] " -ForegroundColor $Script:Colors.Error -NoNewline; Write-Host $msg }
+function Write-Milestone { param($desc, $status) if ($status) { $pad = [Math]::Max(1, 40 - $desc.Length); Write-Host "  $desc...$(' ' * $pad)$status" } else { Write-Host "  $desc..." } }
+function Dump-BufferedOutput { if ($Script:OutputBuffer.Count -gt 0) { Write-Host "`n--- Detailed output (for debugging) ---" -ForegroundColor DarkGray; foreach ($line in $Script:OutputBuffer) { Write-Host $line -ForegroundColor DarkGray }; Write-Host "--- End detailed output ---`n" -ForegroundColor DarkGray; $Script:OutputBuffer = @() } }
+
+$Script:OutputBuffer = @()
 
 function Show-Help {
     Write-Host @"
@@ -57,10 +65,12 @@ Options:
     -InstallDir <path>                Set installation directory
     -Force                            Force reinstall
     -Component <main-app|tray|all>    Update specific component
+    -VerboseOutput (-v)               Show detailed output
     -Help                             Show this help
 
 Examples:
     .\install.ps1
+    .\install.ps1 -VerboseOutput
     .\install.ps1 -InstallDir "C:\MyAlly"
     .\install.ps1 -Force -Component main-app
     irm https://get.myally.ai/install.ps1 | iex
@@ -345,7 +355,11 @@ function Main {
     Write-Info "Detected platform: Windows"
 
     # Check prerequisites
-    Write-Info "Checking prerequisites..."
+    if ($VerboseOutput) {
+        Write-Info "Checking prerequisites..."
+    } else {
+        Write-Milestone "Checking prerequisites"
+    }
 
     if (-not (Test-Git)) {
         exit 1
@@ -384,6 +398,10 @@ function Main {
         Write-Warn "Node.js not found. The installer will attempt to install it."
     }
 
+    if (-not $VerboseOutput) {
+        Write-Milestone "Checking prerequisites" "done"
+    }
+
     # Set default install directory
     if ([string]::IsNullOrEmpty($InstallDir)) {
         $InstallDir = Join-Path $env:LOCALAPPDATA "MyAlly"
@@ -413,6 +431,9 @@ function Main {
     New-Item -ItemType Directory -Path $tmpDir -Force | Out-Null
 
     try {
+        if (-not $VerboseOutput) {
+            Write-Milestone "Downloading updater"
+        }
         Write-Info "Downloading MyAlly Update Script..."
 
         # Clone repository (shallow, with auth fallback)
@@ -431,15 +452,21 @@ function Main {
             exit 1
         }
 
+        if (-not $VerboseOutput) {
+            Write-Milestone "Downloading updater" "done"
+            Write-Milestone "Setting up environment"
+        }
         Write-Info "Setting up installation environment..."
 
         # Create a virtual environment for the updater
         $venvDir = Join-Path $tmpDir "venv"
-        & uv venv $venvDir --python 3.11
+        $uvOutput = & uv venv $venvDir --python 3.11 2>&1
         if ($LASTEXITCODE -ne 0) {
+            if ($VerboseOutput) { $uvOutput | ForEach-Object { Write-Host $_ } }
             Write-Err "Failed to create virtual environment"
             exit 1
         }
+        if ($VerboseOutput) { $uvOutput | ForEach-Object { Write-Host $_ } }
 
         # Get venv Python path
         $venvPython = Join-Path $venvDir "Scripts\python.exe"
@@ -448,10 +475,16 @@ function Main {
 
         # Install updater in the venv using uv (uv doesn't need pip in venv)
         Set-Location $updaterDir
-        & uv pip install -e . --python $venvPython
+        $uvOutput = & uv pip install -e . --python $venvPython 2>&1
         if ($LASTEXITCODE -ne 0) {
+            if ($VerboseOutput) { $uvOutput | ForEach-Object { Write-Host $_ } }
             Write-Err "Failed to install ally-updater"
             exit 1
+        }
+        if ($VerboseOutput) { $uvOutput | ForEach-Object { Write-Host $_ } }
+
+        if (-not $VerboseOutput) {
+            Write-Milestone "Setting up environment" "done"
         }
 
         if ($isUpdate) {
@@ -462,6 +495,9 @@ function Main {
 
         # Run updater using the venv Python
         $installArgs = @("--install-dir", $InstallDir)
+        if ($VerboseOutput) {
+            $installArgs += "--verbose"
+        }
         if ($Force -or $Component) {
             $installArgs += "update"
             if ($Component) {

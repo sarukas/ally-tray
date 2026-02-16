@@ -6,7 +6,7 @@
 # Usage:
 #   irm https://get.myally.ai/install.ps1 | iex
 #   OR
-#   .\install.ps1 [-InstallDir <path>] [-Yes] [-Force] [-Component <main-app|tray|all>]
+#   .\install.ps1 [-InstallDir <path>] [-Force] [-Component <main-app|tray|all>]
 
 [CmdletBinding()]
 param(
@@ -54,13 +54,15 @@ MyAlly Installation Script
 Usage: .\install.ps1 [OPTIONS]
 
 Options:
-    -InstallDir <path>    Set installation directory
-    -Yes                  Skip confirmation prompts
-    -Help                 Show this help
+    -InstallDir <path>                Set installation directory
+    -Force                            Force reinstall
+    -Component <main-app|tray|all>    Update specific component
+    -Help                             Show this help
 
 Examples:
     .\install.ps1
-    .\install.ps1 -InstallDir "C:\MyAlly" -Yes
+    .\install.ps1 -InstallDir "C:\MyAlly"
+    .\install.ps1 -Force -Component main-app
     irm https://get.myally.ai/install.ps1 | iex
 "@
 }
@@ -460,14 +462,14 @@ function Main {
 
         # Run updater using the venv Python
         $installArgs = @("--install-dir", $InstallDir)
-        if ($Yes) {
-            $installArgs += "--yes"
-        }
-        if ($Force) {
-            $installArgs += "--force"
-        }
-        if ($Component) {
-            $installArgs += @("--component", $Component)
+        if ($Force -or $Component) {
+            $installArgs += "update"
+            if ($Component) {
+                $installArgs += $Component
+            }
+            if ($Force) {
+                $installArgs += "--force"
+            }
         }
 
         & $venvPython -m ally_updater @installArgs

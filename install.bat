@@ -7,7 +7,7 @@ REM Works both from the repository root (finds install.ps1 locally) and
 REM as a standalone download (fetches install.ps1 from GitHub).
 REM
 REM Usage:
-REM   install.bat [--install-dir <path>] [--yes] [--force] [--component <main-app|tray|all>]
+REM   install.bat [--install-dir <path>] [--force] [--component <main-app|tray|all>]
 
 setlocal enabledelayedexpansion
 
@@ -39,18 +39,6 @@ if "%~1"=="" goto run_installer
 if /i "%~1"=="--install-dir" (
     set "PS_ARGS=!PS_ARGS! -InstallDir "%~2""
     shift
-    shift
-    goto parse_args
-)
-
-if /i "%~1"=="--yes" (
-    set "PS_ARGS=!PS_ARGS! -Yes"
-    shift
-    goto parse_args
-)
-
-if /i "%~1"=="-y" (
-    set "PS_ARGS=!PS_ARGS! -Yes"
     shift
     goto parse_args
 )

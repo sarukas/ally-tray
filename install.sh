@@ -180,26 +180,113 @@ check_uv() {
     return 1
 }
 
+# Check if a clone error is an authentication/permission issue (vs disk, network, etc.)
+is_auth_error() {
+    local stderr_output="$1"
+    # Common auth-related patterns from git/gh
+    echo "$stderr_output" | grep -qiE \
+        'authentication|unauthorized|403|401|permission denied|could not read from remote|invalid credentials|bad credentials|token|login required'
+}
+
+# Check clone stderr for known non-auth errors and print a helpful message.
+# Returns 0 if a non-auth error was detected (caller should abort), 1 otherwise.
+check_clone_error() {
+    local stderr_output="$1"
+    local dest="$2"
+
+    # Clean up partial directory left by failed clone attempt
+    rm -rf "$dest" 2>/dev/null
+
+    # No output to analyze — fall through to auth logic
+    if [ -z "$stderr_output" ]; then
+        return 1
+    fi
+
+    # Disk space
+    if echo "$stderr_output" | grep -qiE 'no space left on device|disk quota exceeded|not enough space|ENOSPC'; then
+        error "Clone failed: insufficient disk space."
+        info "Free up disk space and try again."
+        info "Details: $stderr_output"
+        return 0
+    fi
+
+    # Network / DNS
+    if echo "$stderr_output" | grep -qiE 'could not resolve host|network is unreachable|connection timed out|connection refused|SSL|unable to access'; then
+        error "Clone failed: network error."
+        info "Check your internet connection and try again."
+        info "Details: $stderr_output"
+        return 0
+    fi
+
+    # Destination already exists
+    if echo "$stderr_output" | grep -qiE 'already exists and is not an empty directory'; then
+        error "Clone failed: destination directory already exists."
+        info "Details: $stderr_output"
+        return 0
+    fi
+
+    # Not an auth error either — unknown failure, show details and abort
+    if ! is_auth_error "$stderr_output"; then
+        error "Clone failed with unexpected error."
+        info "Details: $stderr_output"
+        return 0
+    fi
+
+    # It IS an auth error — let the caller continue to auth fallback
+    return 1
+}
+
 # Clone the private repository with auth fallback
 # Tries: 1) gh CLI  2) plain git clone  3) PAT prompt
 clone_repo() {
     local dest="$1"
+    local clone_stderr
 
     # Method 1: gh CLI (handles auth automatically)
     if command_exists gh; then
         info "Trying clone via GitHub CLI (gh)..."
-        if gh repo clone "$REPO_OWNER/$REPO_NAME" "$dest" -- --depth 1 2>/dev/null; then
+        clone_stderr=$(gh repo clone "$REPO_OWNER/$REPO_NAME" "$dest" -- --depth 1 2>&1 >/dev/null)
+        if [ $? -eq 0 ]; then
             success "Cloned via gh CLI"
             return 0
         fi
-        warn "gh clone failed (not authenticated?). Trying next method..."
+
+        # Check if it's a non-auth error (disk, network, etc.) — abort early
+        if check_clone_error "$clone_stderr" "$dest"; then
+            return 1
+        fi
+
+        # It's an auth error — try interactive login if possible
+        if [ -t 0 ]; then
+            warn "gh is not authenticated. Starting interactive login..."
+            if gh auth login; then
+                info "Retrying clone after authentication..."
+                clone_stderr=$(gh repo clone "$REPO_OWNER/$REPO_NAME" "$dest" -- --depth 1 2>&1 >/dev/null)
+                if [ $? -eq 0 ]; then
+                    success "Cloned via gh CLI (after login)"
+                    return 0
+                fi
+                if check_clone_error "$clone_stderr" "$dest"; then
+                    return 1
+                fi
+            fi
+            warn "gh authentication/clone failed. Trying next method..."
+        else
+            warn "gh clone failed (not authenticated, and stdin is piped — cannot run interactive login). Trying next method..."
+        fi
     fi
 
     # Method 2: plain git clone (works with SSH keys or credential manager)
     info "Trying clone via git..."
-    if git clone --depth 1 "$REPO_URL" "$dest" 2>/dev/null; then
+    clone_stderr=$(git clone --depth 1 "$REPO_URL" "$dest" 2>&1 >/dev/null)
+    if [ $? -eq 0 ]; then
         success "Cloned via git"
         return 0
+    fi
+
+    # Check for non-auth errors before falling through to PAT prompt
+    if check_clone_error "$clone_stderr" "$dest"; then
+        return 1
     fi
 
     # Method 3: prompt for GitHub Personal Access Token
@@ -219,9 +306,15 @@ clone_repo() {
         return 1
     fi
 
-    if git clone --depth 1 "https://${github_token}@github.com/$REPO_OWNER/$REPO_NAME.git" "$dest" 2>/dev/null; then
+    clone_stderr=$(git clone --depth 1 "https://${github_token}@github.com/$REPO_OWNER/$REPO_NAME.git" "$dest" 2>&1 >/dev/null)
+    if [ $? -eq 0 ]; then
         success "Cloned via PAT"
         return 0
+    fi
+
+    # Show the actual error instead of a generic message
+    if check_clone_error "$clone_stderr" "$dest"; then
+        return 1
     fi
 
     error "All clone methods failed. Check your credentials and try again."

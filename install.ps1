@@ -188,26 +188,111 @@ function Install-Uv {
     return $false
 }
 
+function Test-AuthError {
+    param([string]$StderrOutput)
+    return ($StderrOutput -match '(?i)(authentication|unauthorized|403|401|permission denied|could not read from remote|invalid credentials|bad credentials|token|login required)')
+}
+
+# Check clone stderr for known non-auth errors and print a helpful message.
+# Returns $true if a non-auth error was detected (caller should abort), $false otherwise.
+function Test-CloneError {
+    param(
+        [string]$StderrOutput,
+        [string]$Destination
+    )
+
+    # Clean up partial directory left by failed clone attempt
+    if (Test-Path $Destination) {
+        Remove-Item -Path $Destination -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    # No output to analyze — fall through to auth logic
+    if ([string]::IsNullOrWhiteSpace($StderrOutput)) {
+        return $false
+    }
+
+    # Disk space
+    if ($StderrOutput -match '(?i)(no space left|disk quota exceeded|not enough (space|disk)|There is not enough space|ENOSPC)') {
+        Write-Err "Clone failed: insufficient disk space."
+        Write-Info "Free up disk space and try again."
+        Write-Info "Details: $StderrOutput"
+        return $true
+    }
+
+    # Network / DNS
+    if ($StderrOutput -match '(?i)(could not resolve host|network is unreachable|connection timed out|connection refused|SSL|unable to access)') {
+        Write-Err "Clone failed: network error."
+        Write-Info "Check your internet connection and try again."
+        Write-Info "Details: $StderrOutput"
+        return $true
+    }
+
+    # Destination already exists
+    if ($StderrOutput -match '(?i)(already exists and is not an empty directory)') {
+        Write-Err "Clone failed: destination directory already exists."
+        Write-Info "Details: $StderrOutput"
+        return $true
+    }
+
+    # Not an auth error either — unknown failure, show details and abort
+    if (-not (Test-AuthError $StderrOutput)) {
+        Write-Err "Clone failed with unexpected error."
+        Write-Info "Details: $StderrOutput"
+        return $true
+    }
+
+    # It IS an auth error — let the caller continue to auth fallback
+    return $false
+}
+
 function Clone-Repo {
     param([string]$Destination)
 
     # Method 1: gh CLI (handles auth automatically)
     if (Test-Command "gh") {
         Write-Info "Trying clone via GitHub CLI (gh)..."
-        & gh repo clone "$RepoOwner/$RepoName" $Destination -- --depth 1 2>$null
+        $cloneOutput = & gh repo clone "$RepoOwner/$RepoName" $Destination -- --depth 1 2>&1
+        $cloneStderr = ($cloneOutput | Where-Object { $_ -is [System.Management.Automation.ErrorRecord] } | ForEach-Object { $_.ToString() }) -join "`n"
         if ($LASTEXITCODE -eq 0) {
             Write-Success "Cloned via gh CLI"
             return $true
         }
-        Write-Warn "gh clone failed (not authenticated?). Trying next method..."
+
+        # Check if it's a non-auth error (disk, network, etc.) — abort early
+        if (Test-CloneError -StderrOutput $cloneStderr -Destination $Destination) {
+            return $false
+        }
+
+        # It's an auth error — try interactive login
+        Write-Warn "gh is not authenticated. Starting interactive login..."
+        & gh auth login
+        if ($LASTEXITCODE -eq 0) {
+            Write-Info "Retrying clone after authentication..."
+            $cloneOutput = & gh repo clone "$RepoOwner/$RepoName" $Destination -- --depth 1 2>&1
+            $cloneStderr = ($cloneOutput | Where-Object { $_ -is [System.Management.Automation.ErrorRecord] } | ForEach-Object { $_.ToString() }) -join "`n"
+            if ($LASTEXITCODE -eq 0) {
+                Write-Success "Cloned via gh CLI (after login)"
+                return $true
+            }
+            if (Test-CloneError -StderrOutput $cloneStderr -Destination $Destination) {
+                return $false
+            }
+        }
+        Write-Warn "gh authentication/clone failed. Trying next method..."
     }
 
     # Method 2: plain git clone (works with SSH keys or credential manager)
     Write-Info "Trying clone via git..."
-    & git clone --depth 1 $RepoUrl $Destination 2>$null
+    $cloneOutput = & git clone --depth 1 $RepoUrl $Destination 2>&1
+    $cloneStderr = ($cloneOutput | Where-Object { $_ -is [System.Management.Automation.ErrorRecord] } | ForEach-Object { $_.ToString() }) -join "`n"
     if ($LASTEXITCODE -eq 0) {
         Write-Success "Cloned via git"
         return $true
+    }
+
+    # Check for non-auth errors before falling through to PAT prompt
+    if (Test-CloneError -StderrOutput $cloneStderr -Destination $Destination) {
+        return $false
     }
 
     # Method 3: prompt for GitHub Personal Access Token
@@ -220,10 +305,16 @@ function Clone-Repo {
         return $false
     }
 
-    & git clone --depth 1 "https://${token}@github.com/$RepoOwner/$RepoName.git" $Destination 2>$null
+    $cloneOutput = & git clone --depth 1 "https://${token}@github.com/$RepoOwner/$RepoName.git" $Destination 2>&1
+    $cloneStderr = ($cloneOutput | Where-Object { $_ -is [System.Management.Automation.ErrorRecord] } | ForEach-Object { $_.ToString() }) -join "`n"
     if ($LASTEXITCODE -eq 0) {
         Write-Success "Cloned via PAT"
         return $true
+    }
+
+    # Show the actual error instead of a generic message
+    if (Test-CloneError -StderrOutput $cloneStderr -Destination $Destination) {
+        return $false
     }
 
     Write-Err "All clone methods failed. Check your credentials and try again."

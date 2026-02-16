@@ -45,9 +45,9 @@ milestone() {
     if [ -n "$status" ]; then
         local pad=$((40 - ${#desc}))
         [ "$pad" -lt 1 ] && pad=1
-        printf "  %s...%*s%s\n" "$desc" "$pad" "" "$status"
+        printf "\r  %s...%*s%s\n" "$desc" "$pad" "" "$status"
     else
-        printf "  %s...\n" "$desc"
+        printf "  %s..." "$desc"
     fi
 }
 
@@ -395,9 +395,9 @@ main() {
 
     # Check prerequisites
     if [ "$VERBOSE" = true ]; then
-        info "Checking prerequisites..."
+        info "Preparing installer..."
     else
-        milestone "Checking prerequisites"
+        milestone "Preparing installer"
     fi
     check_git
 
@@ -436,7 +436,7 @@ main() {
     fi
 
     if [ "$VERBOSE" != true ]; then
-        milestone "Checking prerequisites" "done"
+        milestone "Preparing installer" "done"
     fi
 
     # Set default install directory
@@ -539,7 +539,7 @@ main() {
     fi
 
     # Run updater using the venv Python (use array to preserve paths with spaces)
-    install_args=("--install-dir" "$install_dir")
+    install_args=("--install-dir" "$install_dir" "--no-banner")
     if [ "$VERBOSE" = true ]; then
         install_args+=("--verbose")
     fi

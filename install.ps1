@@ -50,7 +50,7 @@ function Write-Info    { param($msg) if ($VerboseOutput) { Write-Host "[INFO]  "
 function Write-Success { param($msg) if ($VerboseOutput) { Write-Host "[OK]    " -ForegroundColor $Script:Colors.Success -NoNewline; Write-Host $msg } else { $Script:OutputBuffer += "[OK]    $msg" } }
 function Write-Warn    { param($msg) Write-Host "[WARN]  " -ForegroundColor $Script:Colors.Warning -NoNewline; Write-Host $msg }
 function Write-Err     { param($msg) Dump-BufferedOutput; Write-Host "[ERROR] " -ForegroundColor $Script:Colors.Error -NoNewline; Write-Host $msg }
-function Write-Milestone { param($desc, $status) if ($status) { $pad = [Math]::Max(1, 40 - $desc.Length); Write-Host "  $desc...$(' ' * $pad)$status" } else { Write-Host "  $desc..." } }
+function Write-Milestone { param($desc, $status) if ($status) { $pad = [Math]::Max(1, 40 - $desc.Length); Write-Host "`r  $desc...$(' ' * $pad)$status" } else { Write-Host "  $desc..." -NoNewline } }
 function Dump-BufferedOutput { if ($Script:OutputBuffer.Count -gt 0) { Write-Host "`n--- Detailed output (for debugging) ---" -ForegroundColor DarkGray; foreach ($line in $Script:OutputBuffer) { Write-Host $line -ForegroundColor DarkGray }; Write-Host "--- End detailed output ---`n" -ForegroundColor DarkGray; $Script:OutputBuffer = @() } }
 
 $Script:OutputBuffer = @()
@@ -356,9 +356,9 @@ function Main {
 
     # Check prerequisites
     if ($VerboseOutput) {
-        Write-Info "Checking prerequisites..."
+        Write-Info "Preparing installer..."
     } else {
-        Write-Milestone "Checking prerequisites"
+        Write-Milestone "Preparing installer"
     }
 
     if (-not (Test-Git)) {
@@ -399,7 +399,7 @@ function Main {
     }
 
     if (-not $VerboseOutput) {
-        Write-Milestone "Checking prerequisites" "done"
+        Write-Milestone "Preparing installer" "done"
     }
 
     # Set default install directory
@@ -494,7 +494,7 @@ function Main {
         }
 
         # Run updater using the venv Python
-        $installArgs = @("--install-dir", $InstallDir)
+        $installArgs = @("--install-dir", $InstallDir, "--no-banner")
         if ($VerboseOutput) {
             $installArgs += "--verbose"
         }
